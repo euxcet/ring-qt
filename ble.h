@@ -22,6 +22,7 @@
 #include <QLowEnergyCharacteristic>
 #include <QBluetoothLocalDevice>
 #include "ring.h"
+#include "tcpserver.h"
 #include "deviceinterface.h"
 
 class BLE : public QObject, DeviceInterface
@@ -59,7 +60,9 @@ private:
     void handleDevice(QBluetoothDeviceInfo deviceInfo);
 
     int port;
-    QTcpSocket *socket;
+    TcpServer server;
+    // QTcpSocket *socket;
+
     QBluetoothDeviceDiscoveryAgent * m_DiscoveryAgent;
 
     QList<Ring*> rings;

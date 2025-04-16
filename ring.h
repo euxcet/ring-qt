@@ -21,6 +21,7 @@
 #include <QtBluetooth/QLowEnergyAdvertisingData>
 #include <QtBluetooth/QLowEnergyAdvertisingParameters>
 #include "deviceinterface.h"
+#include "tcpserver.h"
 
 class BLE;
 
@@ -28,20 +29,20 @@ class Ring : public QObject
 {
     Q_OBJECT
 public:
-    Ring(const QBluetoothDeviceInfo &info, QTcpSocket *socket, DeviceInterface *interface);
+    Ring(const QBluetoothDeviceInfo &info, TcpServer *server, DeviceInterface *interface);
     void connectDevice(void);
     void disconnectDevice(void);
 
     QBluetoothDeviceInfo info;
 
 private slots:
+    void dataFromClient(QByteArray data);
+
     void handleServiceDiscovered(const QBluetoothUuid &uuid);
     void handleDeviceConnected(void);
     void handleDeviceDisconnected(void);
     void handleDiscoveryFinished(void);
     void handleError(QLowEnergyController::Error error);
-
-    void receiveSocketData(void);
 
     void serviceDetailsDiscovered(QLowEnergyService::ServiceState newState);
 
@@ -60,7 +61,7 @@ private:
     bool isConnected = false;
     QLowEnergyCharacteristic writeChannel;
 
-    QTcpSocket *socket;
+    TcpServer *server;
     QLowEnergyController *m_LowController = nullptr;
     QLowEnergyService *service;
 };

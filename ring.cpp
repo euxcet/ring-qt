@@ -1,6 +1,6 @@
 #include "ring.h"
 
-Ring::Ring(const QBluetoothDeviceInfo &info, QTcpSocket *socket, DeviceInterface *interface) : info(info), socket(socket), interface(interface) {
+Ring::Ring(const QBluetoothDeviceInfo &info, TcpServer *server, DeviceInterface *interface) : info(info), server(server), interface(interface) {
     batteryTimer = nullptr;
 }
 
@@ -13,30 +13,18 @@ void Ring::releaseResources(void) {
         m_LowController->disconnectFromDevice();
         delete m_LowController;
     }
-    if (batteryTimer) {
-        batteryTimer->stop();
-        delete batteryTimer;
-        batteryTimer = nullptr;
-    }
     m_LowController = nullptr;
 }
 
-
-void Ring::receiveSocketData(void) {
-    QByteArray data = socket->readAll();
-    qDebug() << "Tcp data " << data;
-    if (service) {
-        //service -> writeCharacteristic(writeChannel, QByteArray::fromHex("00009900"));
-        service -> writeCharacteristic(writeChannel, data);
+void Ring::dataFromClient(QByteArray data) {
+    if (m_LowController && service) {
+        service->writeCharacteristic(writeChannel, data);
     }
 }
 
 void Ring::connectDevice(void) {
     isConnected = false;
     qDebug() << "bind socket to receive";
-    connect(socket, SIGNAL(readyRead()), this, SLOT(receiveSocketData()));
-
-    socket->write(info.address().toString().toLocal8Bit());
 
     if (!m_LowController) {
         m_LowController = QLowEnergyController::createCentral(info);
@@ -50,9 +38,9 @@ void Ring::connectDevice(void) {
         connect(m_LowController, &QLowEnergyController::disconnected, this, &Ring::handleDeviceDisconnected);
         connect(m_LowController, &QLowEnergyController::serviceDiscovered, this, &Ring::handleServiceDiscovered);
         connect(m_LowController, &QLowEnergyController::discoveryFinished, this, &Ring::handleDiscoveryFinished);
+        connect(server, &TcpServer::dataFromClient, this, &Ring::dataFromClient);
     }
-    // qDebug() << " connect address:" << info.address();
-    qDebug() << "!!! connect address:" << info.address();
+    qDebug() << "connect address:" << info.address();
     m_LowController->connectToDevice();
 }
 
@@ -62,10 +50,8 @@ void Ring::disconnectDevice(void) {
 
 void Ring::handleBatteryTimeout(void) {
     if (service) {
-        qDebug() << "get battery";
         service->writeCharacteristic(writeChannel, QByteArray::fromHex("00001200"));
     }
-
 }
 
 void Ring::handleDeviceConnected(void) {
@@ -73,17 +59,10 @@ void Ring::handleDeviceConnected(void) {
     isConnected = true;
     m_LowController->discoverServices();
     interface->onConnected();
-    batteryTimer = new QTimer(this);
-    connect(batteryTimer, &QTimer::timeout, this, &Ring::handleBatteryTimeout);
-    batteryTimer->start(5000);
 }
 
 void Ring::handleDeviceDisconnected(void) {
     qDebug("Device disconnected.");
-    if (socket -> state() == QAbstractSocket::ConnectedState) {
-        socket -> write("Disconnected");
-        socket->flush();
-    }
     releaseResources();
     interface->onDisconnected();
 }
@@ -104,7 +83,6 @@ void Ring::handleError(QLowEnergyController::Error error) {
 }
 
 void Ring::connectService(QString uuid) {
-    // QLowEnergyService *service = nullptr;
     QList<QBluetoothUuid> services = m_LowController->services();
 
     for (const QBluetoothUuid &serviceUuid : services) {
@@ -124,11 +102,6 @@ void Ring::serviceDetailsDiscovered(QLowEnergyService::ServiceState newState) {
 
     service = qobject_cast<QLowEnergyService *>(sender());
 
-    if (socket->state() == QAbstractSocket::ConnectedState) {
-        socket->write("Connected");
-        socket->flush();
-    }
-
     connect(service, &QLowEnergyService::characteristicChanged, this, &Ring::handleCharacteristicChanged);
     connect(service, &QLowEnergyService::characteristicRead, this, &Ring::handleCharacteristicRead);
     connect(service, &QLowEnergyService::characteristicWritten, this, &Ring::handleCharacteristicWritten);
@@ -140,7 +113,7 @@ void Ring::serviceDetailsDiscovered(QLowEnergyService::ServiceState newState) {
             writeChannel = ch;
             service->writeCharacteristic(ch, QByteArray::fromHex("00001100"));
             service->writeCharacteristic(ch, QByteArray::fromHex("00001101"));
-            service->writeCharacteristic(ch, QByteArray::fromHex("00004006"));
+            service->writeCharacteristic(ch, QByteArray::fromHex("000040060007000702"));
             service->writeCharacteristic(ch, QByteArray::fromHex("00000000"));
         }
     }
@@ -157,13 +130,9 @@ void Ring::serviceDetailsDiscovered(QLowEnergyService::ServiceState newState) {
 
 void Ring::handleCharacteristicChanged(const QLowEnergyCharacteristic &c, const QByteArray &value) {
     QString Value = value.toHex();
-    if (socket -> state() == QAbstractSocket::ConnectedState) {
-        socket -> write(value);
-    }
-    if (value[2] == 0x12) {
-        qDebug() << int(value[2]) << " " << int(value[3]) << " " << int(value[4]);
-    }
-    // qDebug() << "Ring-" + info.address().toString() + "-特性值发生变化：" + Value;
+
+    server -> send(QByteArray::fromHex("33445566") + info.address().toString().toLocal8Bit() + value);
+    qDebug() << "Ring-" + info.address().toString() + "-特性值发生变化：" + Value;
 }
 
 void Ring::handleCharacteristicRead(const QLowEnergyCharacteristic &c, const QByteArray &value) {

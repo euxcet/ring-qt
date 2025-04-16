@@ -12,13 +12,15 @@ SOURCES += \
     ble.cpp \
     main.cpp \
     mainwindow.cpp \
-    ring.cpp
+    ring.cpp \
+    tcpserver.cpp
 
 HEADERS += \
     ble.h \
     deviceinterface.h \
     mainwindow.h \
-    ring.h
+    ring.h \
+    tcpserver.h
 
 FORMS += \
     mainwindow.ui

@@ -5,35 +5,27 @@
 
 BLE::BLE(int port, QObject *parent)
     : QObject(parent), port(port) {
-    reconnecting = true;
-    socket = new QTcpSocket();
-    socket -> abort();
-    socket -> connectToHost("127.0.0.1", port);
-    socket -> waitForConnected();
+    reconnecting = false;
+    server.listen(QHostAddress::Any, 5566);
 
     m_DiscoveryAgent = new QBluetoothDeviceDiscoveryAgent();
     m_DiscoveryAgent->setLowEnergyDiscoveryTimeout(50);
 
     connect(m_DiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::deviceDiscovered, this, &BLE::handleDeviceDiscovered);
     connect(m_DiscoveryAgent, &QBluetoothDeviceDiscoveryAgent::finished, this, &BLE::handleScanFinished);
-
 }
 
 void BLE::releaseResources() {
     if (m_DiscoveryAgent && m_DiscoveryAgent->isActive()) {
         m_DiscoveryAgent->stop();
     }
+
     delete m_DiscoveryAgent;
 }
 
 BLE::~BLE() {
     releaseResources();
-    if (socket) {
-        socket->close();
-        delete socket;
-    }
 }
-
 
 void BLE::handleDeviceDiscovered(const QBluetoothDeviceInfo &info)
 {
@@ -50,7 +42,7 @@ void BLE::handleDeviceDiscovered(const QBluetoothDeviceInfo &info)
                         }
                     }
                     if (valid) {
-                        Ring *ring = new Ring(info, socket, this);
+                        Ring *ring = new Ring(info, &server, this);
                         ring->connectDevice();
                         rings.append(ring);
                     }
@@ -66,12 +58,17 @@ void BLE::onConnected(void) {
 }
 
 void BLE::onDisconnected(void) {
+    if (reconnecting) {
+        return;
+    }
+    qDebug() << "onDisconnected";
     reconnecting = true;
     for (Ring* ring: rings) {
         ring->disconnectDevice();
         delete ring;
     }
     rings.clear();
+    qDebug() << "Removed";
     startScanDevices();
 }
 
